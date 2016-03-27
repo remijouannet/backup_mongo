@@ -1,12 +1,14 @@
-backup_mysql
+backup_mongo
 ==
 
-This bash program has been made to backup mysql databases, the using is simple
+This bash program has been made to backup mongo databases, the using is simple
+
+!!!WARNING!!! the user should have the right to connect through the admin database
 
 * clone the repo
 
 ```
-git clone https://github.com/remijouannet/backup_mysql.git
+git clone https://github.com/remijouannet/backup_mongo.git
 ```
 
 * launch the makefile
@@ -16,7 +18,7 @@ sudo make install
 ```
 
 
-* configure /etc/backup_mysql/backup_mysql.ini
+* configure /etc/backup_mongo/backup_mongo.ini
 
 ```
 #!/bin/bash
@@ -26,17 +28,17 @@ sudo make install
 #the directory where to put the backup
 DIR_BACKUP='/tmp/backup'
 
-#Settings for mysql connection
-MYSQL_HOST='localhost'
-MYSQL_PORT='3306'
-MYSQL_USER='user'
-MYSQL_PASSWORD='password'
+#Settings for mongo connection
+MONGO_HOST='localhost'
+MONGO_PORT='3306'
+MONGO_USER='user'
+MONGO_PASSWORD='password'
 
-#backup all the databases, this parameter overwrite the parameter MYSQL_DATABASES
-MYSQL_DATABASES_ALL=1
+#backup all the databases, this parameter overwrite the parameter MONGO_DATABASES
+MONGO_DATABASES_ALL=1
 
-#Select the databases you want to backup, MYSQL_DATABASES_ALL must be to 0
-MYSQL_DATABASES=('dbA' 'dbB' 'dbC')
+#Select the databases you want to backup, MONGO_DATABASES_ALL must be to 0
+MONGO_DATABASES=('dbA' 'dbB' 'dbC')
 
 #date format for the log file
 DATE_FORMAT_LOG="%Y-%m-%d %H:%M:%S" 
@@ -90,17 +92,17 @@ postbackup(){
 * launch the script, **launch the script as root**
 
 ```
-sudo /usr/sbin/backup_mysql_cron
+sudo /usr/sbin/backup_mongo_cron
 ```
 
 mutliple config files
 --
 
-You can have mutliple config files, if you have let's say a conf file named "/etc/backup_mysql/backup_mysql2.ini"
+You can have mutliple config files, if you have let's say a conf file named "/etc/backup_mongo/backup_mongo2.ini"
 you can use it with the following command
 
 ```
-/usr/sbin/backup_mysql_cron /etc/backup_mysql/backup_mysql2.ini
+/usr/sbin/backup_mongo_cron /etc/backup_mongo/backup_mongo2.ini
 ```
 
 configuration with cron
@@ -117,7 +119,7 @@ sudo crontab -e
 * add this line for every day, 6AM
 
 ```
-0 6 * * * /usr/sbin/backup_mysql_cron
+0 6 * * * /usr/sbin/backup_mongo_cron
 ```
 
 
