@@ -1,0 +1,158 @@
+#!/bin/bash
+
+datediff() {
+    d1=$(date -d "$1" +%s)
+    d2=$(date -d "$2" +%s)
+    echo $(( (d1 - d2) / 86400 ))
+}
+
+contains() {
+  local e
+  for e in "${@:2}"; do [[ "$e" == "$1" ]] && return 0; done
+  return 1
+}
+
+return1(){
+	return 1
+}
+
+check() {
+	$@;exitcode=$?
+ 
+	if [ $exitcode -ne 0 ] ;
+	then
+		echo $(date +"$DATE_FORMAT_LOG")" error";
+		exit $exitcode ;
+	fi
+}
+
+
+rotate(){
+	local dir=$1
+	local rotate=$2
+
+	echo $(date +"$DATE_FORMAT_LOG")" rotate $dir $rotate"
+	
+	find $dir -ctime +$rotate -type f -name '*.archive.gz' -exec rm -f {} \;
+}
+
+list_db() {
+	list=$(mongo \
+	--host=$MONGO_HOST \
+	--port=$MONGO_PORT \
+	--username$MONGO_USER \
+	--password=$MONGO_PASSWORD \
+    --eval "db.getMongo().getDBNames()" \
+    --quiet admin | sed 's/"\|\[\|\]\|,//g')
+
+    echo $list | sed 's/ /\n/g'
+}
+
+connect_mongo() {
+	mongo \
+	--host=$MONGO_HOST \
+	--port=$MONGO_PORT \
+	--username$MONGO_USER \
+	--password=$MONGO_PASSWORD \
+    --eval "db.getMongo().getDBNames()" \
+	--quiet admin > /dev/null
+}
+
+backup() {
+	local db=$1
+	local type_backup=$2
+	local rotate=$3
+	
+	local db_backup=$DIR_BACKUP/$type_backup/$db
+	local gz_backup=$db_backup/$db'_'$(date +"$DATE_FORMAT_BACKUP")'.archive.gz'
+
+	echo $(date +"$DATE_FORMAT_LOG")" backup $db $type_backup"	
+	[ -d $db_backup ] || check mkdir $db_backup
+	
+	mongodump \
+		--host=$MONGO_HOST \
+		--port=$MONGO_PORT \
+		--username=$MONGO_USER \
+		--password=$MONGO_PASSWORD \
+        --authenticationDatabase=admin \
+		--db=$db --archive | gzip -c > $gz_backup
+
+	if [ -f $gz_backup ]
+	then
+		chmod 600 $gz_backup
+		rotate $db_backup $rotate	
+	fi
+}
+
+
+#########################BEGINNGING#########################
+
+
+if [ "$#" -eq 1 ] && [ -f "$1" ]	
+then
+	. $1
+elif [ -f ./backup_mongo.ini ]	
+then
+	. ./backup_mongo.ini
+elif [ -f /etc/backup_mongo/backup_mongo.ini ]
+then
+        . /etc/backup_mongo/backup_mongo.ini
+else
+	echo $(date +"$DATE_FORMAT_LOG")\
+		" could not find /etc/backup_mongo/backup_mongo.ini or backup_mongo.ini or $1"
+	exit 1
+fi
+
+prebackup
+
+echo $(date +"$DATE_FORMAT_LOG")" check gunzip"
+check which gunzip;
+
+echo $(date +"$DATE_FORMAT_LOG")" check $DIR_BACKUP"
+check ls $DIR_BACKUP;
+
+echo $(date +"$DATE_FORMAT_LOG")" check mongo connection"
+check connect_mongo;
+
+echo $(date +"$DATE_FORMAT_LOG")" Test writing permissions $DIR_BACKUP"
+[ -w $DIR_BACKUP ] || check return1;
+
+echo $(date +"$DATE_FORMAT_LOG")" create $DIR_BACKUP/daily"
+[ $DAILY = false ] || [ -d $DIR_BACKUP/daily ] || check mkdir $DIR_BACKUP/daily
+
+echo $(date +"$DATE_FORMAT_LOG")" create $DIR_BACKUP/weekly"
+[ $WEEKLY = false ] || [ -d $DIR_BACKUP/weekly ] || check mkdir $DIR_BACKUP/weekly
+
+echo $(date +"$DATE_FORMAT_LOG")" create $DIR_BACKUP/monthly"
+[ $MONTHLY = false ] || [ -d $DIR_BACKUP/monthly ] || check mkdir $DIR_BACKUP/monthly
+
+CURRENT_DOW=$(date +'%u')
+CURRENT_DOM=$(date +'%d' | sed -e 's/^0//g')
+
+ROTATE_WEEKLY=$(datediff "now" "-$ROTATE_WEEKLY week")
+ROTATE_MONTHLY=$(datediff "now" "-$ROTATE_MONTHLY month")
+
+list_db | while read db
+do
+	if [ "$MONGO_DATABASES_ALL" -eq 1 ] || [ $(contains $db ${MONGO_DATABASES[@]};echo $?) -eq 0 ]
+	then
+		if [ $DAILY = true ] && [ $(contains $CURRENT_DOW ${DAYS_DAILY[@]};echo $?) -eq 0 ]
+		then
+			backup $db "daily" $ROTATE_DAILY;
+		fi
+		
+		if [ $WEEKLY = true ] && [ $CURRENT_DOW -eq $DAY_WEEKLY ]
+		then
+			backup $db "weekly" $ROTATE_WEEKLY;
+		fi
+		
+		if [ $MONTHLY = true ] && [ $CURRENT_DOM -eq $DAY_MONTHLY ]
+		then
+			backup $db "monthly" $ROTATE_MONTHLY;
+		fi
+	fi
+done;
+
+postbackup
+
+exit 0
